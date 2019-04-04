@@ -1,5 +1,5 @@
 {application, raft,
- [{description, "An OTP application"},
+ [{description, "Implementation of raft"},
   {vsn, "0.1.0"},
   {registered, []},
   {mod, { raft_app, []}},
