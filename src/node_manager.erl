@@ -11,7 +11,11 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/1,
+         is_single_node/0,
+         get_enrolled_nodes_number/0,
+         get_connected_nodes_number/0,
+         call_nodes/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -23,6 +27,7 @@
 
 -record(state, {
     connected_nodes = []   :: list(),
+    failed_nodes = []      :: list(),
     enrolled_nodes = []    :: list()
 }).
 
@@ -30,6 +35,8 @@
     name            :: node(),
     is_enrolled     :: boolean()
 }).
+
+-define(RAFT_CONFIG_FILE, "raft.config").
 
 %%====================================================================
 %% API functions
@@ -61,7 +68,16 @@ call_nodes(Event, Message) ->
 %%====================================================================
 -spec init(list()) -> {ok, #state{}}.
 init([]) ->
-    {ok, #state{}}.
+    case file:consult(?RAFT_CONFIG_FILE) of
+        {ok, Configs} ->
+            InitialNodes = find_init_nodes_in_config(Configs),
+            ConnectedNodes = [N || N <- InitialNodes, pong =:= net_adm:ping(N)],
+            FailedNodes = lists:subtract(InitialNodes, ConnectedNodes),
+            {ok, #state{connected_nodes = ConnectedNodes,
+                        failed_nodes = FailedNodes}};
+        {error, _Reason} ->            
+            {ok, #state{}}
+    end.
 
 -spec handle_call(term(), term(), #state{}) -> {reply, term(), #state{}}.
 handle_call(is_single_node, _From, State) ->
@@ -71,7 +87,7 @@ handle_call(get_enrolled_nodes_number, _From, State) ->
     {reply, erlang:length(State#state.enrolled_nodes), State};
 handle_call(get_connected_nodes_number, _From, State) ->
     {reply, erlang:length(State#state.connected_nodes), State};
-handle_call({call_nodes, Event, Message}, _From, 
+handle_call({call_nodes, Event, Message}, _From,
             State#state{enrolled_nodes = Nodes}) ->
     {Replies, BadNodes} = 
         rpc:multi_server_call(Nodes, node_manager, {Event, Message}),
@@ -86,7 +102,7 @@ handle_cast(_Message, State) ->
 
 -spec handle_info(term(), #state{}) -> {noreply, #state{}}.
 handle_info({From, {send_request_vote_messages, RequestVoteRPC}}, State) ->
-    Reply = leader_election:handle_request_vote_message(RequestVoteRPC);
+    Reply = leader_election:handle_request_vote_message(RequestVoteRPC),
     From ! {?MODULE, erlang:node(), Reply};
 handle_info(_Message, State) ->
     {noreply, State}.
@@ -102,3 +118,10 @@ code_change(_OldVersion, State, _Extra) ->
 %%====================================================================
 %% Internal functions
 %%====================================================================
+find_init_nodes_in_config(Configs) ->
+    case lists:keyfind(nodes, 1, Configs) of
+        {nodes, Nodes} ->
+            Nodes;
+        false ->
+            []
+    end.
