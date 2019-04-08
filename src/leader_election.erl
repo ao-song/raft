@@ -16,6 +16,7 @@
 %% gen_statem callbacks
 -export([
          init/1,
+         callback_mode/0,
          format_status/2,
          state_name/3,
          handle_event/4,
