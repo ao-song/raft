@@ -40,9 +40,8 @@
     nextIndex,
     matchIndex,
     
-    voteCount,
-    id,
-    electionTimeoutRef
+    voteCount = 0,
+    id
 }).
 
 -record(requestVoteRPC, {    
@@ -117,9 +116,8 @@ handle_request_vote_message(RequestVoteRPC) ->
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
-    Ref = set_election_timeout(),
-    {ok, follower, #state{voteCount = 0,
-                          electionTimeoutRef = Ref}}.
+    set_election_timeout(),
+    {ok, follower, #state{}}.
 
 callback_mode() -> state_functions.
 
@@ -160,32 +158,29 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%                   {keep_state_and_data, Actions}
 %% @end
 %%--------------------------------------------------------------------
-follower(info, electionTimeout, State) ->
-    erlang:cancel_timer(State#state.electionTimeoutRef),
-    Ref = set_election_timeout(),
-    {next_state, candidate, State#state{voteCount = 1,
-                                        electionTimeoutRef = Ref}};
+follower(info, {timeout, TimerRef, electionTimeout}, State) ->
+    erlang:cancel_timer(TimerRef),
+    set_election_timeout(),
+    {next_state, candidate, State#state{voteCount = 1}};
 %% first vote
-follower({call, From}, 
-         {handle_request_vote_message, 
+follower({call, From},
+         {handle_request_vote_message,
           RequestVoteRPC#requestVoteRPC{term = CandidateTerm,
-                                        candidateId = CandidateId}}, 
+                                        candidateId = CandidateId}},
          State#state{currentTerm = FollowerCurrentTerm,
                      votedFor = VotedFor,
                      log = [],
-                     electionTimeoutRef = Ref}) 
+                     electionTimeoutRef = Ref})
   when (VotedFor == null) orelse (VotedFor == CandidateId) ->
     case (FollowerCurrentTerm <= CandidateTerm) of
-        true -> 
-            erlang:cancel_timer(Ref),
-            NewRef = set_election_timeout(),
-            {next_state, follower, 
-             State#state{votedFor = CandidateId,
-                         electionTimeoutRef = NewRef}, 
+        true ->
+            set_election_timeout(),
+            {next_state, follower,
+             State#state{votedFor = CandidateId},
              [{reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
                                                   voteGranted = true}}]};
         false ->
-            {next_state, follower, 
+            {next_state, follower,
              State#state{votedFor = null}, 
              [{reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
                                                   voteGranted = false}}]}
@@ -207,13 +202,11 @@ follower({call, From},
          (lists:last(FollowerLog)#log.term <= CandidateLastLogTerm) andalso
          (FollowerLastApplied <= CandidateLastLogIndex) of
         true -> 
-            erlang:cancel_timer(Ref),
-            NewRef = set_election_timeout(),
+            set_election_timeout(),
             {next_state, follower, 
              State#state{votedFor = CandidateId}, 
              [{reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
-                                                  voteGranted = true,
-                                                  electionTimeoutRef = NewRef}}]};
+                                                  voteGranted = true}}]};
         false ->
             {next_state, follower, 
              State#state{votedFor = null}, 
@@ -235,11 +228,10 @@ follower(_EventType, _EventContent, State) ->
     end.
 
 %% election timer elapses, start new election
-candidate(info, electionTimeout, State) ->
-    erlang:cancel_timer(State#state.electionTimeoutRef),
-    Ref = set_election_timeout(),
-    {next_state, candidate, State#state{voteCount = 1,
-                                        electionTimeoutRef = Ref}};
+candidate(info, {timeout, TimerRef, electionTimeout}, State) ->
+    erlang:cancel_timer(TimerRef),
+    set_election_timeout(),
+    {next_state, candidate, State#state{voteCount = 1}};
 %% todo, candidate convert to follower when receive AppendEntries RPC from new leader
 %% initial vote
 candidate(_EventType, _EventContent, State#state{log = [],
@@ -248,14 +240,12 @@ candidate(_EventType, _EventContent, State#state{log = [],
                                      candidateId = State#state.id,
                                      lastLogIndex = 0,
                                      lastLogTerm = 0},
-    erlang:cancel_timer(Ref),
-    NewRef = set_election_timeout(),
+    set_election_timeout(),
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
     case check_if_elected(Replies) of
         true -> 
             {next_state, leader, 
-             State#state{term = State#state.currentTerm + 1,
-                         electionTimeoutRef = NewRef}};
+             State#state{term = State#state.currentTerm + 1}};
         false ->
             {next_state, candidate, State#state{electionTimeoutRef = NewRef}};
 candidate(_EventType, _EventContent, State#state{log = Log,
@@ -265,17 +255,19 @@ candidate(_EventType, _EventContent, State#state{log = Log,
                                      candidateId = State#state.id,
                                      lastLogIndex = LastLog#log.term,
                                      lastLogTerm = State#state.lastApplied},
-    erlang:cancel_timer(Ref),
-    NewRef = set_election_timeout(),
+    set_election_timeout(),
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
     case check_if_elected(Replies) of
         true -> 
             {next_state, leader, 
-             State#state{term = State#state.currentTerm + 1,
-                         electionTimeoutRef = NewRef}};
+             State#state{term = State#state.currentTerm + 1}};
         false ->
             {next_state, candidate, State#state{electionTimeoutRef = NewRef}}.
 
+leader(_EventType, {timeout, TimerRef, electionTimeout}, State) ->
+    erlang:cancel_timer(TimerRef),
+    NextStateName = next_state,
+    {next_state, NextStateName, State}.
 leader(_EventType, _EventContent, State) ->
     NextStateName = next_state,
     {next_state, NextStateName, State}.
@@ -357,4 +349,4 @@ check_if_elected(Replies) ->
 
 set_election_timeout() ->
     ElectionTimeout = get_election_timeout(),
-    erlang:send_after(ElectionTimeout, self(), electionTimeout).
+    erlang:start_timer(ElectionTimeout, self(), electionTimeout).
