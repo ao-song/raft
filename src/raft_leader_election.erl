@@ -25,9 +25,15 @@
         ]).
 
 -define(SERVER, ?MODULE).
+<<<<<<< HEAD:src/raft_leader_election.erl
 -define(DEFAULT_HEARTBEAT_INTERVAL, 75).
 -define(DEFAULT_ELECTION_TIMEOUT_MIN, 150).
 -define(DEFAULT_ELECTION_TIMEOUT_MAX, 300).
+=======
+-define(DEFAULT_HEARTBEAT_TIMEOUT, 15).
+-define(DEFAULT_ELECTION_TIMEOUT_LOW, 150).
+-define(DEFAULT_ELECTION_TIMEOUT_HIGH, 300).
+>>>>>>> ddd802d3328f2709c095fc576f0db775b4ad6fc9:src/raft_leader_election.erl
 -define(MAJORITY, 0.5).
 
 -record(state, {
