@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 2018-01-18
 %%%-------------------------------------------------------------------
--module(node_manager).
+-module(raft_nodes_manager).
 
 -behaviour(gen_server).
 
