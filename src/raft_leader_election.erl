@@ -6,7 +6,7 @@
 %%% @end
 %%% Created : 2018-01-16
 %%%-------------------------------------------------------------------
--module(leader_election).
+-module(raft_leader_election).
 
 -behaviour(gen_statem).
 
@@ -25,8 +25,9 @@
         ]).
 
 -define(SERVER, ?MODULE).
--define(ELECTION_TIMEOUT_LOW, 150).
--define(ELECTION_TIMEOUT_HIGH, 300).
+-define(DEFAULT_HEARTBEAT_INTERVAL, 75).
+-define(DEFAULT_ELECTION_TIMEOUT_MIN, 150).
+-define(DEFAULT_ELECTION_TIMEOUT_MAX, 300).
 -define(MAJORITY, 0.5).
 
 -record(state, {
@@ -110,10 +111,13 @@ handle_request_vote_message(RequestVoteRPC) ->
 %% gen_statem:start_link/[3,4], this function is called by the new
 %% process to initialize.
 %%
+%% When servers start up, they begin as followers.
+%%
 %% @spec init(Args) -> {CallbackMode, StateName, State} |
 %%                     {CallbackMode, StateName, State, Actions} |
 %%                     ignore |
 %%                     {stop, StopReason}
+%%
 %% @end
 %%--------------------------------------------------------------------
 init([]) ->
@@ -219,6 +223,13 @@ follower({call, From}, {handle_request_vote_message, _RequestVoteRPC},
          _State) ->
     {reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
                                         voteGranted = false}};
+%% a server remains in follower state as long as it receives valid RPCs from
+%% a leader or candidate.
+follower({call, From}, {handle_request_vote_message, _RequestVoteRPC}, 
+         _State) ->
+    {reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
+                                        voteGranted = false}};
+%% put it down for a while!
 follower(_EventType, _EventContent, State) ->
     IsSingleNode = node_manager:is_single_node(),
     case IsSingleNode of
@@ -331,7 +342,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%%===================================================================
 %% get election timeout, unit in ms
 get_election_timeout() ->
-    random_number(?ELECTION_TIMEOUT_LOW, ?ELECTION_TIMEOUT_HIGH).
+    random_number(?DEFAULT_ELECTION_TIMEOUT_MIN, ?DEFAULT_ELECTION_TIMEOUT_MAX).
 
 %% generate a random number between From and To
 random_number(From, To) ->
