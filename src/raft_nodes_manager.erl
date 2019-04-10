@@ -13,7 +13,6 @@
 %% API
 -export([start_link/1,
          is_single_node/0,
-         get_enrolled_nodes_number/0,
          get_connected_nodes_number/0,
          call_nodes/2]).
 
@@ -27,8 +26,7 @@
 
 -record(state, {
     connected_nodes = []   :: list(),
-    failed_nodes = []      :: list(),
-    enrolled_nodes = []    :: list()
+    failed_nodes = []      :: list()
 }).
 
 -record(node, {
@@ -48,10 +46,6 @@ start_link(_Args) ->
 -spec is_single_node() -> boolean().
 is_single_node() ->
     gen_server:call(?MODULE, is_single_node).
-
--spec get_enrolled_nodes_number() -> integer().
-get_enrolled_nodes_number() ->
-    gen_server:call(?MODULE, get_enrolled_nodes_number).
 
 -spec get_connected_nodes_number() -> integer().
 get_connected_nodes_number() ->
@@ -75,21 +69,18 @@ init([]) ->
             FailedNodes = lists:subtract(InitialNodes, ConnectedNodes),
             {ok, #state{connected_nodes = ConnectedNodes,
                         failed_nodes = FailedNodes}};
-        {error, _Reason} ->            
+        {error, _Reason} ->
             {ok, #state{}}
     end.
 
 -spec handle_call(term(), term(), #state{}) -> {reply, term(), #state{}}.
 handle_call(is_single_node, _From, State) ->
-    EnrolledNodesNum = erlang:length(State#state.enrolled_nodes),
-    {reply, (EnrolledNodesNum =:= 0), State};
-handle_call(get_enrolled_nodes_number, _From, State) ->
-    {reply, erlang:length(State#state.enrolled_nodes), State};
+    {reply, (State#state.connected_nodes =:= []), State};
 handle_call(get_connected_nodes_number, _From, State) ->
     {reply, erlang:length(State#state.connected_nodes), State};
 handle_call({call_nodes, Event, Message}, _From,
-            State#state{enrolled_nodes = Nodes}) ->
-    {Replies, BadNodes} = 
+            State#state{connected_nodes = Nodes}) ->
+    {Replies, BadNodes} =
         rpc:multi_server_call(Nodes, node_manager, {Event, Message}),
     {reply, {Replies, BadNodes}, State};
 handle_call(_Message, _From, State) ->

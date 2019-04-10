@@ -3,7 +3,11 @@ raft
 
 An implementation of raft protocol.
 
-Utilizing the distributed erlang feature to skip the implementation protocols like gossip.
+Todo:
+-----
+    - Utilizing the distributed erlang feature to skip the implementation protocols like gossip currently.
+    - Default timer now, make it configurable later.
+
 
 Start erlang with erl:
 -----

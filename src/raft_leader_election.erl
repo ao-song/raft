@@ -25,25 +25,19 @@
         ]).
 
 -define(SERVER, ?MODULE).
-<<<<<<< HEAD:src/raft_leader_election.erl
 -define(DEFAULT_HEARTBEAT_INTERVAL, 75).
 -define(DEFAULT_ELECTION_TIMEOUT_MIN, 150).
 -define(DEFAULT_ELECTION_TIMEOUT_MAX, 300).
-=======
--define(DEFAULT_HEARTBEAT_TIMEOUT, 15).
--define(DEFAULT_ELECTION_TIMEOUT_LOW, 150).
--define(DEFAULT_ELECTION_TIMEOUT_HIGH, 300).
->>>>>>> ddd802d3328f2709c095fc576f0db775b4ad6fc9:src/raft_leader_election.erl
 -define(MAJORITY, 0.5).
 
 -record(state, {
     %% Persistent state on all servers
-    currentTerm,
+    currentTerm = 0,
     votedFor = null,
     log = [],
     %% Volatile state on all servers
-    commitIndex,
-    lastApplied,
+    commitIndex = 0,
+    lastApplied = 0,
     %% Volatile state on leaders
     nextIndex,
     matchIndex,
@@ -170,6 +164,7 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %% @end
 %%--------------------------------------------------------------------
 follower(info, {timeout, TimerRef, electionTimeout}, State) ->
+    %% If a follower receives no communication over a period of time, a new election begins.
     erlang:cancel_timer(TimerRef),
     set_election_timeout(),
     {next_state, candidate, State#state{voteCount = 1}};
@@ -276,16 +271,19 @@ candidate(_EventType, _EventContent, State#state{log = Log,
     set_election_timeout(),
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
     case check_if_elected(Replies) of
-        true -> 
+        true ->
+
             {next_state, leader, 
              State#state{term = State#state.currentTerm + 1}};
         false ->
             {next_state, candidate, State#state{electionTimeoutRef = NewRef}}.
 
-leader(_EventType, {timeout, TimerRef, electionTimeout}, State) ->
+leader(_EventType, {timeout, TimerRef, leaderHeartbeat}, State) ->
+    %% Leaders send periodic heartbeats to all followers to maintain their authority.
     erlang:cancel_timer(TimerRef),
-    NextStateName = next_state,
-    {next_state, NextStateName, State}.
+    broadcast_heartbeat_to_nodes(),
+    start_heartbeat_timer(),
+    {next_state, leader, State};
 leader(_EventType, _EventContent, State) ->
     NextStateName = next_state,
     {next_state, NextStateName, State}.
@@ -368,3 +366,9 @@ check_if_elected(Replies) ->
 set_election_timeout() ->
     ElectionTimeout = get_election_timeout(),
     erlang:start_timer(ElectionTimeout, self(), electionTimeout).
+
+start_heartbeat_timer() ->
+    erlang:start_timer(?DEFAULT_HEARTBEAT_INTERVAL, self(), leaderHeartbeat).
+
+broadcast_heartbeat_to_nodes() ->
+    ok.
