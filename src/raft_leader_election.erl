@@ -41,20 +41,20 @@
     %% Volatile state on leaders
     nextIndex,
     matchIndex,
-    
+
     voteCount = 0,
     id
 }).
 
--record(requestVoteRPC, {    
-    term,  %% Candidate's term    
+-record(requestVoteRPC, {
+    term,  %% Candidate's term
     candidateId,  %% Candidate requesting vote
     lastLogIndex,  %% Index of candidate's last log entry
     lastLogTerm  %% Term of candidate's last log entry
 }).
 
--record(requestVoteRPCResult, {    
-    term,  %% Current term, for candidate to update itself    
+-record(requestVoteRPCResult, {
+    term,  %% Current term, for candidate to update itself
     voteGranted  %% true means candidate received vote
 }).
 
@@ -371,4 +371,4 @@ start_heartbeat_timer() ->
     erlang:start_timer(?DEFAULT_HEARTBEAT_INTERVAL, self(), leaderHeartbeat).
 
 broadcast_heartbeat_to_nodes() ->
-    ok.
+    broadcast_msg(leader_alive).

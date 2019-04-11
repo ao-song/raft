@@ -12,6 +12,7 @@
 
 %% API
 -export([start_link/1,
+         broadcast_msg/1,
          is_single_node/0,
          get_connected_nodes_number/0,
          call_nodes/2]).
@@ -39,19 +40,18 @@
 %%====================================================================
 %% API functions
 %%====================================================================
--spec start_link(term()) -> {ok, pid()}.
 start_link(_Args) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec is_single_node() -> boolean().
+broadcast_msg(Msg) ->
+    gen_server:call(?MODULE, {broadcast_msg, Msg}).
+
 is_single_node() ->
     gen_server:call(?MODULE, is_single_node).
 
--spec get_connected_nodes_number() -> integer().
 get_connected_nodes_number() ->
     gen_server:call(?MODULE, get_connected_nodes_number).
 
--spec call_nodes(term(), term()) -> ok | {error, term()}.
 call_nodes(Event, Message) ->
     gen_server:call(?MODULE, {call_nodes, Event, Message}).
 
@@ -65,7 +65,8 @@ init([]) ->
     case file:consult(?RAFT_CONFIG_FILE) of
         {ok, Configs} ->
             InitialNodes = find_init_nodes_in_config(Configs),
-            ConnectedNodes = [N || N <- InitialNodes, pong =:= net_adm:ping(N)],
+            ConnectedNodes = 
+                [N || N <- InitialNodes, pong =:= net_adm:ping(N)],
             FailedNodes = lists:subtract(InitialNodes, ConnectedNodes),
             {ok, #state{connected_nodes = ConnectedNodes,
                         failed_nodes = FailedNodes}};
@@ -74,6 +75,9 @@ init([]) ->
     end.
 
 -spec handle_call(term(), term(), #state{}) -> {reply, term(), #state{}}.
+handle_call({broadcast_msg, Msg}, _From, State) ->
+    rpc:abcast(State#state.connected_nodes, raft_nodes_manager, Msg),
+    {reply, ok, State};
 handle_call(is_single_node, _From, State) ->
     {reply, (State#state.connected_nodes =:= []), State};
 handle_call(get_connected_nodes_number, _From, State) ->
@@ -81,7 +85,7 @@ handle_call(get_connected_nodes_number, _From, State) ->
 handle_call({call_nodes, Event, Message}, _From,
             State#state{connected_nodes = Nodes}) ->
     {Replies, BadNodes} =
-        rpc:multi_server_call(Nodes, node_manager, {Event, Message}),
+        rpc:multi_server_call(Nodes, raft_nodes_manager, {Event, Message}),
     {reply, {Replies, BadNodes}, State};
 handle_call(_Message, _From, State) ->
     Response = ok,
