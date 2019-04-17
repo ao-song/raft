@@ -18,7 +18,7 @@
          init/1,
          callback_mode/0,
          format_status/2,
-         state_name/3,
+         follower/3,
          handle_event/4,
          terminate/3,
          code_change/4
@@ -163,9 +163,8 @@ format_status(_Opt, [_PDict, _StateName, _State]) ->
 %%                   {keep_state_and_data, Actions}
 %% @end
 %%--------------------------------------------------------------------
-follower(info, {timeout, TimerRef, electionTimeout}, State) ->
+follower(info, {timeout, _TimerRef, electionTimeout}, State) ->
     %% If a follower receives no communication over a period of time, a new election begins.
-    erlang:cancel_timer(TimerRef),
     set_election_timeout(),
     {next_state, candidate, State#state{voteCount = 1}};
 %% first vote
@@ -173,12 +172,12 @@ follower({call, From},
          {handle_request_vote_message,
           RequestVoteRPC#requestVoteRPC{term = CandidateTerm,
                                         candidateId = CandidateId}},
-         State#state{currentTerm = FollowerCurrentTerm,
-                     votedFor = VotedFor,
-                     log = [],
-                     electionTimeoutRef = Ref})
+         State = #state{currentTerm = FollowerCurrentTerm,
+                        votedFor = VotedFor,
+                        log = [],
+                        electionTimeoutRef = Ref})
   when (VotedFor == null) orelse (VotedFor == CandidateId) ->
-    case (FollowerCurrentTerm <= CandidateTerm) of
+    case (FollowerCurrentTerm =< CandidateTerm) of
         true ->
             set_election_timeout(),
             {next_state, follower,
@@ -198,15 +197,15 @@ follower({call, From},
                                         candidateId = CandidateId,
                                         lastLogIndex = CandidateLastLogIndex,
                                         lastLogTerm = CandidateLastLogTerm}}, 
-         State#state{currentTerm = FollowerCurrentTerm,
-                     votedFor = VotedFor,
-                     log = FollowerLog,
-                     lastApplied = FollowerLastApplied,
-                     electionTimeoutRef = Ref}) 
+         State = #state{currentTerm = FollowerCurrentTerm,
+                        votedFor = VotedFor,
+                        log = FollowerLog,
+                        lastApplied = FollowerLastApplied,
+                        electionTimeoutRef = Ref}) 
   when (VotedFor == null) orelse (VotedFor == CandidateId) ->
-    case (FollowerCurrentTerm <= CandidateTerm) andalso
-         (lists:last(FollowerLog)#log.term <= CandidateLastLogTerm) andalso
-         (FollowerLastApplied <= CandidateLastLogIndex) of
+    case (FollowerCurrentTerm =< CandidateTerm) andalso
+         (lists:last(FollowerLog)#log.term =< CandidateLastLogTerm) andalso
+         (FollowerLastApplied =< CandidateLastLogIndex) of
         true -> 
             set_election_timeout(),
             {next_state, follower, 
@@ -241,14 +240,14 @@ follower(_EventType, _EventContent, State) ->
     end.
 
 %% election timer elapses, start new election
-candidate(info, {timeout, TimerRef, electionTimeout}, State) ->
-    erlang:cancel_timer(TimerRef),
+candidate(info, {timeout, _TimerRef, electionTimeout}, State) ->
     set_election_timeout(),
     {next_state, candidate, State#state{voteCount = 1}};
 %% todo, candidate convert to follower when receive AppendEntries RPC from new leader
 %% initial vote
-candidate(_EventType, _EventContent, State#state{log = [],
-                                                 electionTimeoutRef = Ref}) ->    
+candidate(_EventType, _EventContent,
+          State = #state{log = [],
+                         electionTimeoutRef = Ref}) ->
     RequestVoteRPC = #requestVoteRPC{term = State#state.currentTerm + 1,
                                      candidateId = State#state.id,
                                      lastLogIndex = 0,
@@ -278,9 +277,8 @@ candidate(_EventType, _EventContent, State#state{log = Log,
         false ->
             {next_state, candidate, State#state{electionTimeoutRef = NewRef}}.
 
-leader(_EventType, {timeout, TimerRef, leaderHeartbeat}, State) ->
+leader(_EventType, {timeout, _TimerRef, leaderHeartbeat}, State) ->
     %% Leaders send periodic heartbeats to all followers to maintain their authority.
-    erlang:cancel_timer(TimerRef),
     broadcast_heartbeat_to_nodes(),
     start_heartbeat_timer(),
     {next_state, leader, State};
@@ -371,4 +369,4 @@ start_heartbeat_timer() ->
     erlang:start_timer(?DEFAULT_HEARTBEAT_INTERVAL, self(), leaderHeartbeat).
 
 broadcast_heartbeat_to_nodes() ->
-    broadcast_msg(leader_alive).
+    raft_nodes_manager:broadcast_msg(leader_alive).

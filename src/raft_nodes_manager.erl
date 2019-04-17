@@ -30,11 +30,6 @@
     failed_nodes = []      :: list()
 }).
 
--record(node, {
-    name            :: node(),
-    is_enrolled     :: boolean()
-}).
-
 -define(RAFT_CONFIG_FILE, "raft.config").
 
 %%====================================================================
@@ -83,7 +78,7 @@ handle_call(is_single_node, _From, State) ->
 handle_call(get_connected_nodes_number, _From, State) ->
     {reply, erlang:length(State#state.connected_nodes), State};
 handle_call({call_nodes, Event, Message}, _From,
-            State#state{connected_nodes = Nodes}) ->
+            State = #state{connected_nodes = Nodes}) ->
     {Replies, BadNodes} =
         rpc:multi_server_call(Nodes, raft_nodes_manager, {Event, Message}),
     {reply, {Replies, BadNodes}, State};
@@ -96,7 +91,7 @@ handle_cast(_Message, State) ->
     {noreply, State}.
 
 -spec handle_info(term(), #state{}) -> {noreply, #state{}}.
-handle_info({From, {send_request_vote_messages, RequestVoteRPC}}, State) ->
+handle_info({From, {send_request_vote_messages, RequestVoteRPC}}, _State) ->
     Reply = leader_election:handle_request_vote_message(RequestVoteRPC),
     From ! {?MODULE, erlang:node(), Reply};
 handle_info(_Message, State) ->
