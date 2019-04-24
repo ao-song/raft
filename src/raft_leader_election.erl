@@ -231,8 +231,7 @@ follower({call, From}, {handle_request_vote_message, _RequestVoteRPC},
                                         voteGranted = false}};
 %% put it down for a while!
 follower(_EventType, _EventContent, State) ->
-    IsSingleNode = node_manager:is_single_node(),
-    case IsSingleNode of
+    case node_manager:is_single_node() of
         true -> 
             {next_state, leader, State};
         false ->
@@ -254,7 +253,7 @@ candidate(_EventType, _EventContent,
                                      lastLogTerm = 0},
     set_election_timeout(),
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
-    case check_if_elected(Replies) of
+    case is_elected(Replies) of
         true -> 
             {next_state, leader, 
              State#state{term = State#state.currentTerm + 1}};
@@ -269,7 +268,7 @@ candidate(_EventType, _EventContent, State#state{log = Log,
                                      lastLogTerm = State#state.lastApplied},
     set_election_timeout(),
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
-    case check_if_elected(Replies) of
+    case is_elected(Replies) of
         true ->
 
             {next_state, leader, 
@@ -354,9 +353,9 @@ random_number(From, To) ->
 send_request_vote_messages(RequestVoteRPC) ->
     node_manager:call_nodes(send_request_vote_messages, RequestVoteRPC).
 
-check_if_elected([]) ->
+is_elected([]) ->
     false;
-check_if_elected(Replies) ->
+is_elected(Replies) ->
     Voted = [R || R <- Replies, R#requestVoteRPCResult.voteGranted == true],
     Rate = erlang:length(Voted) / node_manager:get_enrolled_nodes_number(),
     Rate > ?MAJORITY.
