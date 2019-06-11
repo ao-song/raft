@@ -1,7 +1,7 @@
 raft
 =====
 
-An implementation of raft protocol.
+An implementation of raft protocol. ---- ONGOING, not finished yet!!
 
 Todo:
 -----
