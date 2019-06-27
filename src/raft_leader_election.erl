@@ -167,7 +167,6 @@ follower(info, {timeout, _TimerRef, electionTimeout}, State) ->
     %% If a follower receives no communication over a period of time, a new election begins.
     set_election_timeout(),
     {next_state, candidate, State#state{voteCount = 1}};
-%% first vote
 follower({call, From},
          {handle_request_vote_message,
           RequestVoteRPC#requestVoteRPC{term = CandidateTerm,
@@ -177,9 +176,9 @@ follower({call, From},
                         log = [],
                         electionTimeoutRef = Ref})
   when (VotedFor == null) orelse (VotedFor == CandidateId) ->
+    set_election_timeout(),
     case (FollowerCurrentTerm =< CandidateTerm) of
-        true ->
-            set_election_timeout(),
+        true ->            
             {next_state, follower,
              State#state{votedFor = CandidateId},
              [{reply, From, #requestVoteRPCResult{term = FollowerCurrentTerm,
@@ -258,7 +257,8 @@ candidate(_EventType, _EventContent,
             {next_state, leader, 
              State#state{term = State#state.currentTerm + 1}};
         false ->
-            {next_state, candidate, State#state{electionTimeoutRef = NewRef}};
+            {next_state, candidate, State#state{electionTimeoutRef = NewRef}}
+    end;
 candidate(_EventType, _EventContent, State#state{log = Log,
                                                  electionTimeoutRef = Ref}) ->
     LastLog = lists:last(Log),
@@ -270,11 +270,11 @@ candidate(_EventType, _EventContent, State#state{log = Log,
     {Replies, _BadNodes} = send_request_vote_messages(RequestVoteRPC),
     case is_elected(Replies) of
         true ->
-
             {next_state, leader, 
              State#state{term = State#state.currentTerm + 1}};
         false ->
-            {next_state, candidate, State#state{electionTimeoutRef = NewRef}}.
+            {next_state, candidate, State#state{electionTimeoutRef = NewRef}}
+    end.
 
 leader(_EventType, {timeout, _TimerRef, leaderHeartbeat}, State) ->
     %% Leaders send periodic heartbeats to all followers to maintain their authority.
